@@ -6,9 +6,9 @@ import os
 
 app = Flask(__name__)
 
-openai.api_key = os.getenv("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")
-line_bot_api = LineBotApi(os.getenv("Pv1eu8jUfgJTIcC1eMApXIGbaXYIMIAAt/JqpKW7FlX5LrRdCu/X+wqxauNokT0zUcxe4oQOavmO7hPyImk70qR1bm+P3s/zHJrTWx3hClqVjP9YPz2SysPFwClAYLB8lHJ4CO9wWO2VqGxHs8LUGgdB04t89/1O/w1cDnyilFU="))
-handler = WebhookHandler(os.getenv("6be49243075ab0f2df93eb9a442c2601"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
+line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
+handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
 def translate_with_gpt(text):
     prompt = f"Translate the following text between Burmese and Thai automatically:\n\n{text}\n\nTranslation:"
