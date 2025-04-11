@@ -1,74 +1,45 @@
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import openai
 import os
-from flask import Flask, request, abort
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from openai import OpenAI
 
-# Environment variables
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+app = FastAPI()
 
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
+# Set your OpenAI API key from environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-app = Flask(__name__)
-
-# Translation function using OpenAI
-def translate_text(text, target_language_code):
-    prompt = f"Translate this to {target_language_code}:\n\n{text}"
+@app.post("/")
+async def translate(request: Request):
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+        body = await request.json()
+        message = body.get("message", "")
+
+        # Determine language based on prefix
+        if message.startswith("@th"):
+            target_lang = "Thai"
+            text = message[3:].strip()
+        elif message.startswith("@my"):
+            target_lang = "Burmese"
+            text = message[3:].strip()
+        else:
+            return JSONResponse({"response": "Please start your message with @th or @my."})
+
+        # Generate translation using OpenAI GPT
+        prompt = f"Translate the following into {target_lang}:\n{text}"
+
+        completion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # use correct model
+            messages=[
+                {"role": "system", "content": f"You are a translator that translates text into {target_lang}."},
+                {"role": "user", "content": prompt}
+            ]
         )
-        return response.choices[0].message.content.strip()
+
+        reply = completion.choices[0].message.content.strip()
+        return JSONResponse({"response": f"**{target_lang}:** {reply}"})
+    
+    except openai.error.AuthenticationError:
+        return JSONResponse({"error": "Invalid OpenAI API key."}, status_code=401)
+    
     except Exception as e:
-        print(f"Translation Error: {e}")
-        return "Translation Error."
-
-# LINE webhook endpoint
-@app.route("/callback", methods=['POST'])
-def callback():
-    signature = request.headers.get('X-Line-Signature', '')
-    body = request.get_data(as_text=True)
-
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-
-    return 'OK'
-
-# Handle text messages
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    user_msg = event.message.text.strip()
-
-    if user_msg.startswith('@th '):
-        original_text = user_msg[4:]
-        translated = translate_text(original_text, target_language_code='Thai')
-        reply = f"**Thai:** {translated}"
-    elif user_msg.startswith('@my '):
-        original_text = user_msg[4:]
-        translated = translate_text(original_text, target_language_code='Burmese')
-        reply = f"**Myanmar:** {translated}"
-    elif user_msg.startswith('@en '):
-        original_text = user_msg[4:]
-        translated = translate_text(original_text, target_language_code='English')
-        reply = f"**English:** {translated}"
-    else:
-        return  # Ignore unknown prefixes
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
-
-# Run the Flask app
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+        return JSONResponse({"error": str(e)}, status_code=500)
