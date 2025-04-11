@@ -8,12 +8,12 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 # Environment variables
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-OPENAI_API_KEY = os.getenv("OPENA_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-openai.api_key = OPENA_API_KEY
+openai.api_key = OPENAI_API_KEY
 
 app = Flask(__name__)
 
