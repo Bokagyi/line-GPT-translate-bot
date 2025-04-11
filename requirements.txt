@@ -1,4 +1,5 @@
 flask
-line-bot-sdk
+line-bot-sdk==2.3.0
 openai>=1.0.0
 python-dotenv
+waitress
