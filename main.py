@@ -1,52 +1,57 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from flask import Flask, request, abort
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
 
-from fastapi import FastAPI, Request
+# LINE Channel Secret & Access Token
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
+openai.api_key = OPENAI_API_KEY
 
-app = FastAPI()
+app = Flask(__name__)
 
-@app.post("/callback")
-async def callback(request: Request):
-    data = await request.json()
-    return {"received": data}
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
 
-# Set your OpenAI API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-@app.post("/")
-async def translate(request: Request):
     try:
-        body = await request.json()
-        message = body.get("message", "")
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
 
-        # Determine language based on prefix
-        if message.startswith("@th"):
-            target_lang = "Thai"
-            text = message[3:].strip()
-        elif message.startswith("@my"):
-            target_lang = "Burmese"
-            text = message[3:].strip()
-        else:
-            return JSONResponse({"response": "Please start your message with @th or @my."})
+    return 'OK'
 
-        # Generate translation using OpenAI GPT
-        prompt = f"Translate the following into {target_lang}:\n{text}"
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_input = event.message.text
 
-        completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # use correct model
-            messages=[
-                {"role": "system", "content": f"You are a translator that translates text into {target_lang}."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+    # Translate via OpenAI
+    translation = translate_text(user_input)
 
-        reply = completion.choices[0].message.content.strip()
-        return JSONResponse({"response": f"**{target_lang}:** {reply}"})
-    
-    except openai.error.AuthenticationError:
-        return JSONResponse({"error": "Invalid OpenAI API key."}, status_code=401)
-    
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    # Reply to LINE user
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=translation)
+    )
+
+def translate_text(text):
+    prompt = f"""Translate the following text into Burmese, Thai, and English:\n\nText: {text}\n\nTranslations:\n- Burmese:\n- Thai:\n- English:"""
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7
+    )
+
+    return response['choices'][0]['message']['content']
+
+if __name__ == "__main__":
+    app.run()
