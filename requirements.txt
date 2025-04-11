@@ -1,3 +1,4 @@
 flask
 openai
 line-bot-sdk
+gunicorn
