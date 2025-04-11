@@ -11,6 +11,7 @@ line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
 def translate_with_gpt(text):
+    return "Translated: " + text
     prompt = f"Translate the following text between Burmese and Thai automatically:\n\n{text}\n\nTranslation:"
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
