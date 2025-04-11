@@ -3,7 +3,14 @@ from fastapi.responses import JSONResponse
 import openai
 import os
 
+from fastapi import FastAPI, Request
+
 app = FastAPI()
+
+@app.post("/callback")
+async def callback(request: Request):
+    data = await request.json()
+    return {"received": data}
 
 # Set your OpenAI API key from environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
