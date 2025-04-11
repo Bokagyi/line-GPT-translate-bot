@@ -3,6 +3,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from openai import OpenAI
+from rabbit import zg2uni
 import os
 from dotenv import load_dotenv
 
@@ -36,10 +37,16 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_input = event.message.text
+    print("Original message:", user_input)
+
+    # Convert Zawgyi to Unicode if needed
+    normalized_input = zg2uni(user_input)
+    print("Normalized message:", normalized_input)
 
     try:
-        translation = translate_text(user_input)
+        translation = translate_text(normalized_input)
     except Exception as e:
+        print("Translation error:", e)
         translation = "ဘာသာပြန်ရာမှာ ပြဿနာတက်နေပါတယ်။"
 
     line_bot_api.reply_message(
