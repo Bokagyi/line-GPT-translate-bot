@@ -1,72 +1,46 @@
-from flask import Flask, request, abort
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from openai import OpenAI
-from rabbit import zg2uni
+from fastapi import FastAPI, Request, Header
+import openai
 import os
-from dotenv import load_dotenv
+import httpx
 
-load_dotenv()
+app = FastAPI()
 
-# Token & API Keys
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = os.getenv("OPENAI_API_KEY")
+LINE_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-# OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-app = Flask(__name__)
-
-@app.route("/callback", methods=['POST'])
-def callback():
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-
-    return 'OK'
-
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    user_input = event.message.text
-    print("Original message:", user_input)
-
-    # Convert Zawgyi to Unicode if needed
-    normalized_input = zg2uni(user_input)
-    print("Normalized message:", normalized_input)
-
-    try:
-        translation = translate_text(normalized_input)
-    except Exception as e:
-        print("Translation error:", e)
-        translation = "ဘာသာပြန်ရာမှာ ပြဿနာတက်နေပါတယ်။"
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=translation)
-    )
-
-def translate_text(text):
-    prompt = f"""Translate the following text into Burmese, Thai, and English:\n\nText: {text}\n\nTranslations:\n- Burmese:\n- Thai:\n- English:"""
-
-    response = client.chat.completions.create(
+async def translate_thai_to_burmese(text):
+    prompt = f"Translate this Thai sentence to Burmese: {text}"
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=100,
         temperature=0.7
     )
+    return response.choices[0].message['content'].strip()
 
-    return response.choices[0].message.content
+async def reply_to_line(reply_token, message):
+    headers = {
+        "Authorization": f"Bearer {LINE_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "replyToken": reply_token,
+        "messages": [{"type": "text", "text": message}]
+    }
+    async with httpx.AsyncClient() as client:
+        await client.post("https://api.line.me/v2/bot/message/reply", headers=headers, json=payload)
 
-if __name__ == "__main__":
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+@app.post("/webhook")
+async def line_webhook(request: Request, x_line_signature: str = Header(None)):
+    body = await request.json()
+    events = body.get("events", [])
+
+    for event in events:
+        if event["type"] == "message" and event["message"]["type"] == "text":
+            user_text = event["message"]["text"]
+            reply_token = event["replyToken"]
+
+            translated_text = await translate_thai_to_burmese(user_text)
+            await reply_to_line(reply_token, translated_text)
+
+    return {"status": "ok"}
