@@ -1,24 +1,17 @@
-# main.py
-import openai
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-import os
+from googletrans import Translator
 
 app = Flask(__name__)
 
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# LINE Channel access token & secret
+line_bot_api = LineBotApi('Pv1eu8jUfgJTIcC1eMApXIGbaXYIMIAAt/JqpKW7FlX5LrRdCu/X+wqxauNokT0zUcxe4oQOavmO7hPyImk70qR1bm+P3s/zHJrTWx3hClqVjP9YPz2SysPFwClAYLB8lHJ4CO9wWO2VqGxHs8LUGgdB04t89/1O/w1cDnyilFU=')
+handler = WebhookHandler('6be49243075ab0f2df93eb9a442c2601')
 
-def translate_with_gpt(text):
-    prompt = f"Translate between Thai and Burmese automatically:\n\n{text}"
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-    )
-    return response.choices[0].message["content"].strip()
+# Google Translator instance
+translator = Translator()
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -27,18 +20,25 @@ def callback():
 
     try:
         handler.handle(body, signature)
-    except:
+    except InvalidSignatureError:
         abort(400)
+
     return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    user_text = event.message.text
-    translated_text = translate_with_gpt(user_text)
+    input_text = event.message.text
+
+    # Translate Burmese to English
+    try:
+        translated = translator.translate(input_text, src='my', dest='en').text
+    except Exception as e:
+        translated = "ဘာသာပြန်ရာမှာ အမှားရှိနေပါတယ်။"
+
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=translated_text)
+        TextSendMessage(text=translated)
     )
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run()
